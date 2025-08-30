@@ -947,8 +947,8 @@ function start(currentPath){
         my_console=new Console(console_config);
         let welcome=`欢迎使用${GM_info.script.name}，当前版本为${GM_info.script.version}`
         let gitHubUrl = document.createElement("a");
-        gitHubUrl.href = "https://github.com/zhaoyang1998/yuketang-auto-answer";
-        gitHubUrl.innerText = "https://github.com/zhaoyang1998/yuketang-auto-answer";
+        gitHubUrl.href = "https://github.com/Nyarlathotep0113/YuKeTangAutomation";
+        gitHubUrl.innerText = "https://github.com/Nyarlathotep0113/YuKeTangAutomation";
         gitHubUrl.className = "github-link";
         my_console.log(welcome);
         my_console.warn(GM_info.script.description,gitHubUrl,`by ${GM_info.script.author}`);
