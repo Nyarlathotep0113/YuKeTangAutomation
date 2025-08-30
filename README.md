@@ -1,0 +1,2 @@
+# YuKeTangAutomation
+针对南方医科大雨课堂开发的刷课脚本
