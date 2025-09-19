@@ -132,14 +132,14 @@ GM_addStyle(`
     background: rgba(255, 165, 0, 0.15);
     word-break: break-all;
   }
-        
+
   .github-link:hover {
     color: #FFA500; /* 这是标准的橙色编码 */
     background: rgba(255, 165, 0, 0.25);
     text-decoration: underline;
     box-shadow: 0 0 15px rgba(255, 165, 0, 0.4);
   }
-        
+
   .github-link::after {
     content: "↗";
     margin-left: 5px;
@@ -147,13 +147,10 @@ GM_addStyle(`
     display: inline-block;
     transition: transform 0.2s ease;
     }
-        
+
   .github-link:hover::after {
     transform: translate(3px, -3px);
   }
-  .el-dialog__wrapper{
-        display:none !important;
-    }
 `);
 /**
  * 防止雨课堂切屏检测
@@ -327,7 +324,6 @@ class MouseSliderSimulator {
             this.slideMouse();
         }, this.config.interval);
 
-        my_console.log('鼠标滑动模拟已启动');
         return true;
     }
 
@@ -381,7 +377,6 @@ class MouseSliderSimulator {
         if (this.moveInterval) {
             clearInterval(this.moveInterval);
             this.moveInterval = null;
-            my_console.log('鼠标滑动模拟已停止');
         }
     }
 
@@ -631,66 +626,43 @@ const simulateHumanClick = (element) => {
  * @param maxRetries 可选，默认为5。最大重试次数
  * @returns {Promise<unknown>} Promise对象，解析为找到的元素或错误信息
  */
-function waitForElement(selector,targetContainer=document, timeout = 1000,baseDelay=10, maxRetries = 5) {
+function waitForElement(selector, targetContainer = document, timeout = 1000, baseDelay = 10, maxRetries = 10) {
     return new Promise((resolve, reject) => {
-        //重试次数
         let retryCount = 0;
-        //声明元素
-        let  element;
-        //尝试监听dom树变化来搜索元素
-        const mutationAttemptSearch = () => {
-            // 1.立即检查元素是否存在
-            element = targetContainer.querySelector(selector);
+
+        function attempt() {
+            // 1. 立即检查
+            const element = targetContainer.querySelector(selector);
             if (element) {
                 return resolve(element);
             }
-            // 2.如果不存在，采取监听DOM变化
-            // 2.1超时时间
-            let timeoutId;
-            // 2.2创建MutationObserver监听DOM变化
+
+            // 2. 设置单次观察的超时
+            let timeoutId = setTimeout(() => {
+                observer.disconnect();
+                onTimeout();
+            }, timeout);
+
+            // 3. 启动Observer监听
             const observer = new MutationObserver((mutations) => {
-                for (const mutation of mutations) {
-                    if (mutation.type === 'childList') {
-                        for (const node of mutation.addedNodes) {
-                            // 只处理元素节点
-                            if (node.nodeType === Node.ELEMENT_NODE) {
-                                element = node.querySelector(selector);
-                                if (element) {
-                                    clearTimeout(timeoutId);
-                                    observer.disconnect();
-                                    resolve(element);
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
-                //3. 额外全局检查，防止变动的元素并未被监听到
-                element = targetContainer.querySelector(selector);
-                if (element) {
-                    clearTimeout(timeoutId);
-                    observer.disconnect();
-                    resolve(element);
-                    return;
-                }
-                //4. 保活计时器
-                timeoutId=setTimeout(()=>{
-                    observer.disconnect();
-                    if(retryCount<maxRetries){
-                        retryCount++;
-                        setTimeout(mutationAttemptSearch(),baseDelay*(2**retryCount));
-                    }else{
-                        reject(new Error(`查找元素${selector}失败，重试次数已达上限,请检查网络连接。`));
-                    }
-                },timeout);
             });
-            //开始观察文档变化
-            observer.observe(targetContainer, {
-                childList: true,
-                subtree: true
-            });
-        };
-        mutationAttemptSearch();
+
+            observer.observe(targetContainer, { childList: true, subtree: true });
+
+            // 4. 处理单次观察超时的函数
+            function onTimeout() {
+                retryCount++;
+                if (retryCount <= maxRetries) {
+                    // 等待指数退避时间后，进行下一次attempt
+                    setTimeout(attempt, baseDelay * Math.pow(2, retryCount - 1));
+                } else {
+                    reject(new Error(`查找元素${selector}失败，重试次数已达上限,请检查网络连接。`));
+                }
+            }
+        }
+
+        // 开始第一次尝试
+        attempt();
     });
 }
 /**
@@ -743,6 +715,11 @@ function selectLessonItemPageLogic(){
  * 自动播放视频
  */
 function autoPlayVideo(){
+    GM_addStyle(
+        `.el-dialog__wrapper{
+        display:none !important;
+    }`
+    )
     /**
      * 对视频进行区间播放，跳过已经播放过的视频
      */
@@ -764,6 +741,7 @@ function autoPlayVideo(){
         videoFlushWorker.postMessage({type:'launch'});
         videoFlushWorker.onmessage = function(e) {
             if (e.data.type === 'check') {
+                my_console.log("当前视频时间:"+videoElement.currentTime);
                 // 收到Worker的定时信号
                 if(videoElement.currentTime<=videoElement.duration&&videoElement.currentTime>=end){
                     my_console.log("跳过已经观看过的区间:"+watchedInterval[currentInterval]['s']+"-"+watchedInterval[currentInterval]['e']);
@@ -779,19 +757,22 @@ function autoPlayVideo(){
     //获取雨课堂的最高层静态div
     let app=document.getElementById('app');
     let callback=()=>{
-         //如果该视频已经是完成状态了，则直接跳转下一个
-         waitForElement(".title-fr>.progress-wrap>.item>.text",app).then(finish=>{
-             if(finish.innerText==="完成度：100%"){
-                 my_console.log("当前课程已经学完，即将跳转至下一个课程...");
-                 let nextButton=document.querySelector('span.btn-next.ml20.pointer');
-                 simulateHumanClick(nextButton);
-             }
-         }).catch(err=>{});
+        //如果该视频已经是完成状态了，则直接跳转下一个
+        waitForElement(".title-fr>.progress-wrap>.item>.text",app).then(finish=>{
+            if(finish.innerText==="完成度：100%"){
+                my_console.log("当前课程已经学完，即将跳转至下一个课程...");
+                let nextButton=document.querySelector('span.btn-next.ml20.pointer');
+                simulateHumanClick(nextButton);
+            }
+        }).catch(err=>{
+            location.reload();
+        });
         //打印当前课程名称
         waitForElement('.title-fl > span',app).then(title=>{
             my_console.log("当前课程："+title.innerText);
         }).catch(err=>{
-            my_console.error(err);
+            my_console.error("课程名出错："+err);
+            location.reload();
         });
         //选择视频播放速率
         let rateListPromise=waitForElement('.xt_video_player_common_list',app);
@@ -822,10 +803,12 @@ function autoPlayVideo(){
                 mute.click();
                 intervalPlay();
             })).catch(err=>{
-                my_console.error(err);
+                my_console.error("静音："+err);
+                location.reload();
             })
         }).catch(err=>{
-            my_console.error(err);
+            my_console.error("速率调整："+err);
+            location.reload();
         })
     }
     //寻找视频元素，并对其进行操作
@@ -849,9 +832,18 @@ function autoPlayVideo(){
             let nextButton=document.querySelector('span.btn-next.ml20.pointer');
             if(nextButton){
                 my_console.log("当前视频播放完毕，3s后播放下一个视频...");
-                setTimeout(()=>{
-                    simulateHumanClick(nextButton);
-                },3000)
+                const nextVideoTimer = new Blob([`
+                    const interval = 3000; // 3秒间隔
+                    setTimeout(function() {
+                    self.postMessage({ type: 'next'});
+                    }, interval);
+ `              ], { type: 'application/javascript' });
+                const nextVideoWorker = new Worker(URL.createObjectURL(nextVideoTimer));
+                nextVideoWorker.onmessage = function(e) {
+                    if (e.data.type === 'next') {
+                        simulateHumanClick(nextButton);
+                    }
+                };
             }else{
                 my_console.log("最后一个视频播放完毕，本课程已经结束!");
             }
@@ -861,11 +853,21 @@ function autoPlayVideo(){
             autoStart: true
         }
         window.mouseSliderSimulator = new MouseSliderSimulator(mouseSliderConfig);
-        setTimeout(()=>{
-            callback();
-        },1000);
+        const callbackTimer = new Blob([`
+                    const interval = 1000; // 3秒间隔
+                    setTimeout(function() {
+                    self.postMessage({ type: 'callback'});
+                    }, interval);
+ `              ], { type: 'application/javascript' });
+        const callbackWorker = new Worker(URL.createObjectURL(callbackTimer));
+        callbackWorker.onmessage = function(e) {
+            if (e.data.type === 'callback') {
+                callback();
+            }
+        };
     }).catch(err=>{
-        my_console.error(err);
+        my_console.error("寻找视频元素"+err);
+        location.reload();
     });
 }
 //当路由变动时，所需要进行的操作
@@ -890,7 +892,7 @@ function hackHistoryApi(){
      * 属于被动监听机制，在用户触发浏览器行为（如点击前进/后退按钮）或调用 history.back()/forward()时自动触发。
      * 本质是对用户导航行为的响应。
      */
-    //劫持原有的History API
+        //劫持原有的History API
     const _originalPushState = history.pushState;
     const _originalReplaceState = history.replaceState;
     //重写History API.增加路由改变时的行为逻辑
