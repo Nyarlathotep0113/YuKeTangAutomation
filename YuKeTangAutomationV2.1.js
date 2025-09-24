@@ -656,7 +656,9 @@ function scrollForData(container){
             let end=container.querySelector(".studentCard>.end");
             if(end!=null){
                 worker.terminate();
-                return resolve();
+                StrictSetTimeOut(()=>{
+                    return resolve();
+                },2000);
             }else{
                 container.scrollTop = container.scrollHeight;
             }
@@ -779,6 +781,7 @@ function selectLessonItemPageLogicV2(){
                 }else{
                     filteredSections[0].click();
                 }
+
             })
         },1000);
     })
