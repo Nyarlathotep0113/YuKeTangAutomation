@@ -5,6 +5,7 @@
 // @description  本脚本开源于GitHub，不参与任何盈利以及非法行为，任何人不得非法修改本脚本或用于非法行为。若发现bug请提交至
 // @author       Nyarlathotep
 // @match        https://fimmuyjs.yuketang.cn/pro/*
+// @match        https://www.yuketang.cn/v2/web/*
 // @grant        GM_addStyle
 // @grant        unsafeWindow
 // @grant        GM_info
@@ -626,44 +627,91 @@ const simulateHumanClick = (element) => {
  * @param maxRetries 可选，默认为5。最大重试次数
  * @returns {Promise<unknown>} Promise对象，解析为找到的元素或错误信息
  */
-function waitForElement(selector, targetContainer = document, timeout = 1000, baseDelay = 10, maxRetries = 10) {
+function waitForElement(selector, targetContainer = document, baseDelay = 10, maxRetries = 10) {
     return new Promise((resolve, reject) => {
         let retryCount = 0;
 
         function attempt() {
-            // 1. 立即检查
+            //检查
             const element = targetContainer.querySelector(selector);
             if (element) {
                 return resolve(element);
             }
-
-            // 2. 设置单次观察的超时
-            let timeoutId = setTimeout(() => {
-                observer.disconnect();
-                onTimeout();
-            }, timeout);
-
-            // 3. 启动Observer监听
-            const observer = new MutationObserver((mutations) => {
-            });
-
-            observer.observe(targetContainer, { childList: true, subtree: true });
-
-            // 4. 处理单次观察超时的函数
-            function onTimeout() {
-                retryCount++;
-                if (retryCount <= maxRetries) {
-                    // 等待指数退避时间后，进行下一次attempt
-                    setTimeout(attempt, baseDelay * Math.pow(2, retryCount - 1));
-                } else {
-                    reject(new Error(`查找元素${selector}失败，重试次数已达上限,请检查网络连接。`));
-                }
+            retryCount++;
+            if (retryCount <= maxRetries) {
+                // 等待指数退避时间后，进行下一次attempt
+                setTimeout(attempt, baseDelay * Math.pow(2, retryCount - 1));
+            } else {
+                reject(new Error(`查找元素${selector}失败，重试次数已达上限,请检查网络连接。`));
             }
         }
-
         // 开始第一次尝试
         attempt();
     });
+}
+function scrollForData(container){
+    return new Promise((resolve, reject)=>{
+        container.scrollTop = container.scrollHeight;
+        let worker=StrictSetInterval(()=>{
+            let end=container.querySelector(".studentCard>.end");
+            if(end!=null){
+                worker.terminate();
+                return resolve();
+            }else{
+                container.scrollTop = container.scrollHeight;
+            }
+        },100)
+    })
+}
+/**
+ * 突破浏览器的节流限制，利用WebWorker设置一个严格计时器
+ * @param {number} delay - 定时器延迟时间（毫秒）
+ * @param {Function} callback - 定时结束后执行的回调函数
+ * @returns {Worker} 返回Web Worker实例，可用于提前终止定时器
+ */
+function StrictSetTimeOut(callback, delay) {
+    // 创建Worker的Blob对象，包含定时逻辑
+    const workerBlob = new Blob([`
+        self.onmessage = function(e) {
+            const delayTime = e.data;
+            setTimeout(function() {
+                self.postMessage({ type: 'timerComplete' });
+            }, delayTime);
+        };
+    `], { type: 'application/javascript' });
+
+    // 创建Web Worker
+    const worker = new Worker(URL.createObjectURL(workerBlob));
+    //主线程接收WebWorker定时消息
+    worker.onmessage = function(e) {
+        if (e.data.type === 'timerComplete') {
+            callback();
+            worker.terminate(); // 执行完成后自动终止Worker
+        }
+    };
+    // 发送延迟时间参数，启动定时器
+    worker.postMessage(delay);
+    return worker;
+}
+function StrictSetInterval(callback,interval){
+    const workerBlob = new Blob([`
+        self.onmessage = function(e) {
+            const interval = e.data;
+            setInterval(function() {
+                self.postMessage({ type: 'trigger' });
+            }, interval);
+        };
+    `], { type: 'application/javascript' });
+    // 创建Web Worker
+    const worker = new Worker(URL.createObjectURL(workerBlob));
+    //主线程接收WebWorker定时消息
+    worker.onmessage = function(e) {
+        if (e.data.type === 'trigger') {
+            callback();
+        }
+    };
+    worker.postMessage(interval);
+    return worker;
 }
 /**
  * 页面为选择课程主页时执行的逻辑
@@ -710,6 +758,30 @@ function selectLessonItemPageLogic(){
     }).catch(err=>{
         my_console.error(err);
     });
+}
+function selectLessonItemPageLogicV2(){
+    my_console.log("当前页面为课程页面,正在寻找第一个未完成的课程...");
+    let app = document.getElementById("app");
+    waitForElement("div#pane--1>.logs-list",app).then((element)=>{
+        StrictSetTimeOut(()=>{
+            let container=document.querySelector(".viewContainer");
+            scrollForData(container).then(()=>{
+                let sections=element.querySelectorAll(".studentCard>.activity-box>.content-box>section");
+                let filteredSections = Array.from(sections).filter(section => {
+                    let tagElement=section.querySelector("use");
+                    const xlinkHrefValue =tagElement.getAttribute('xlink:href');
+                    let stateElement=section.querySelector(".aside>span");
+                    const state=stateElement.textContent;
+                    return xlinkHrefValue==="#icon-shipin"&&state!=="已完成";
+                })
+                if(filteredSections.length==0){
+                    my_console.log("全部课程已经学完！");
+                }else{
+                    filteredSections[0].click();
+                }
+            })
+        },1000);
+    })
 }
 /**
  * 自动播放视频
@@ -870,13 +942,156 @@ function autoPlayVideo(){
         location.reload();
     });
 }
+function autoPlayVideoV2(){
+    GM_addStyle(
+        `.el-dialog__wrapper{
+        display:none !important;
+    }`
+    )
+    /**
+     * 对视频进行区间播放，跳过已经播放过的视频
+     */
+    function intervalPlay(){
+        let watchedInterval=window._interceptedVideoLogData.data.heartbeat.result;
+        my_console.log("已观看区间："+JSON.stringify(watchedInterval));
+        let currentInterval=0;
+        let end=currentInterval<watchedInterval.length?watchedInterval[currentInterval]['s']:videoElement.duration;
+        videoElement.currentTime=0;
+        //在主线程中创建Web Worker
+        const videoFlushBlob = new Blob([`
+         const interval = 10000; // 10秒间隔
+         setInterval(function() {
+            self.postMessage({ type: 'check'});
+         }, interval);
+ `      ], { type: 'application/javascript' });
+        videoElement.play();
+        const videoFlushWorker = new Worker(URL.createObjectURL(videoFlushBlob));
+        videoFlushWorker.postMessage({type:'launch'});
+        videoFlushWorker.onmessage = function(e) {
+            if (e.data.type === 'check') {
+                my_console.log("当前视频时间:"+videoElement.currentTime);
+                // 收到Worker的定时信号
+                if(videoElement.currentTime<=videoElement.duration&&videoElement.currentTime>=end){
+                    my_console.log("跳过已经观看过的区间:"+watchedInterval[currentInterval]['s']+"-"+watchedInterval[currentInterval]['e']);
+                    videoElement.currentTime=watchedInterval[currentInterval]['e'];
+                    currentInterval++;
+                    end=currentInterval<watchedInterval.length?watchedInterval[currentInterval]['s']:videoElement.duration;
+                }
+            }
+        };
+    }
+    my_console.log("当前页面为视频播放页面,正在自动播放视频...");
+    let videoElement;
+    //获取雨课堂的最高层静态div
+    let app=document.getElementById('app');
+    let callback=()=>{
+        //打印当前课程名称
+        waitForElement('.title-fl > span',app).then(title=>{
+            my_console.log("当前课程："+title.innerText);
+        }).catch(err=>{
+            my_console.error("课程名出错："+err);
+            location.reload();
+        });
+        //选择视频播放速率
+        let rateListPromise=waitForElement('.xt_video_player_common_list',app);
+        let rateButtonPromise=waitForElement('xt-speedbutton',app);
+        //两个dom元素必须都要获取到
+        Promise.all([rateListPromise,rateButtonPromise]).then(([rateList,rateButton])=>{
+            //如果用户设定的速率并不在原有速率列表中，将速率列表中的第一个速率改成对应速率
+            if (![0.5, 1.0, 1.25, 1.5, 2.0].includes(console_config.videoPlayRate)){
+                let newVideoPlayRate = rateList.childNodes[0];
+                newVideoPlayRate.setAttribute('data-speed', console_config.videoPlayRate);
+                newVideoPlayRate.setAttribute('keyt',console_config.videoPlayRate);
+                newVideoPlayRate.innerText=console_config.videoPlayRate.toFixed(2)+"x";
+            }
+            //鼠标移动到速率选择上
+            let rateButtonRect = rateButton.getBoundingClientRect();
+            const mouseMove = new MouseEvent('mousemove', {
+                bubbles: true,
+                cancelable: true,
+                clientX: (rateButtonRect.left+rateButtonRect.right)/2, // 相对于视口的X坐标
+                clientY: (rateButtonRect.top+rateButtonRect.bottom)/2  // 相对于视口的Y坐标
+            });
+            rateButton.dispatchEvent(mouseMove);
+            //选择速率的第一个
+            rateList.children[0].click();
+            //静音播放视频
+            waitForElement('xt-controls > xt-inner > xt-volumebutton > xt-icon',app).then((mute=>{
+                //静音播放视频
+                mute.click();
+                intervalPlay();
+            })).catch(err=>{
+                my_console.error("静音："+err);
+                location.reload();
+            })
+        }).catch(err=>{
+            my_console.error("速率调整："+err);
+            location.reload();
+        })
+    }
+    //寻找视频元素，并对其进行操作
+    waitForElement("video.xt_video_player",app).then(element=>{
+        videoElement=element;
+        //触发获取视频详情api
+        waitForElement('.log-detail').then(element=>{
+            element.click();
+            waitForElement('.v-modal').then(element => {
+                element.remove();
+            })
+        })
+        //监听视频暂停事件，重新播放视频
+        videoElement.addEventListener("pause",()=>{
+            if (videoElement.currentTime <= videoElement.duration - 1){
+                videoElement.play();
+            }
+        });
+        //监听视频播放完毕事件，自动跳转至下一个视频
+        videoElement.addEventListener("ended",()=>{
+                my_console.log("当前视频播放完毕，3s后播放下一个视频...");
+                const nextVideoTimer = new Blob([`
+                    const interval = 3000; // 3秒间隔
+                    setTimeout(function() {
+                    self.postMessage({ type: 'next'});
+                    }, interval);
+ `              ], { type: 'application/javascript' });
+                const nextVideoWorker = new Worker(URL.createObjectURL(nextVideoTimer));
+                nextVideoWorker.onmessage = function(e) {
+                    if (e.data.type === 'next') {
+                        let lastPage=app.querySelector(".icon-shangyigex");
+                        lastPage.click();
+                    }
+                };
+        });
+        let mouseSliderConfig={
+            container: app,
+            autoStart: true
+        }
+        window.mouseSliderSimulator = new MouseSliderSimulator(mouseSliderConfig);
+        const callbackTimer = new Blob([`
+                    const interval = 1000; // 3秒间隔
+                    setTimeout(function() {
+                    self.postMessage({ type: 'callback'});
+                    }, interval);
+ `              ], { type: 'application/javascript' });
+        const callbackWorker = new Worker(URL.createObjectURL(callbackTimer));
+        callbackWorker.onmessage = function(e) {
+            if (e.data.type === 'callback') {
+                callback();
+            }
+        };
+    }).catch(err=>{
+        my_console.error("寻找视频元素"+err);
+        location.reload();
+    });
+}
 //当路由变动时，所需要进行的操作
 function onRouteChange(path) {
+    console.log(window.location.href);
     my_console.clear();
     if(window.mouseSliderSimulator){
         window.mouseSliderSimulator.destroy();
     }
-    start(path);
+    location.reload();
 }
 /**
  * 劫持跳转页面的行为，重新匹配目的地址的操作逻辑
@@ -900,32 +1115,40 @@ function hackHistoryApi(){
         //执行原始的 pushState 方法
         const result = _originalPushState.apply(this, arguments);
         onRouteChange(url)
+        console.log("新增历史记录条目");
         return result;
     };
     history.replaceState = function (state, title, url) {
         // 执行原始的 replaceState 方法
         const result = _originalReplaceState.apply(this, arguments);
-        onRouteChange(url);
+        //onRouteChange(url);
+        console.log("替换历史记录条目");
         return result;
     };
     //修复：以上的History Api劫持不能作用于浏览器的前进/后退,因此监听 popstate 事件（右键前进/后退触发）
     window.addEventListener('popstate', () => {
         onRouteChange(window.location.pathname);
+        console.log("前进/后退触发");
     });
 }
 //正则表达式匹配规则
-class Regex{
+class Regex {
     static videoPathRegex = /^\/pro\/[^\/]+(\/[^\/]+)*\/video\/[^\/]+$/;
     static lessonPathRegex = /^\/pro(\/.*)?\/studycontent$/;
-    static host="/pro/courselist";
+    static host = "/pro/courselist";
+    static hostV2 = "/v2/web/index";
+    static lessonPathRegexV2 = /^\/v2\/web\/studentLog[^\s]*/;
+    static videoPathRegexV2 = /^\/v2\/web\/xcloud\/video-student[^\s]*/;
 }
 //网页不同路由的处理逻辑匹配
 function start(currentPath){
     //页面匹配处理逻辑:查找表
     const pathHandler=[
-        { condition: path => path === Regex.host, action: selectLessonPageLogic },
+        { condition: path => path === Regex.host || path===Regex.hostV2, action: selectLessonPageLogic },
         { condition: path => Regex.lessonPathRegex.test(path), action: selectLessonItemPageLogic },
         { condition: path => Regex.videoPathRegex.test(path), action: autoPlayVideo },
+        { condition: path => Regex.lessonPathRegexV2.test(path), action: selectLessonItemPageLogicV2 },
+        { condition: path => Regex.videoPathRegexV2.test(path), action: autoPlayVideoV2 },
         { condition: path => true, action: ()=>{my_console.error("未知路径，暂未开发对应的功能，请进入学习空间")}}
     ]
     //页面匹配处理
