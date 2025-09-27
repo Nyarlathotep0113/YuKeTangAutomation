@@ -630,7 +630,6 @@ const simulateHumanClick = (element) => {
 function waitForElement(selector, targetContainer = document, baseDelay = 10, maxRetries = 10) {
     return new Promise((resolve, reject) => {
         let retryCount = 0;
-
         function attempt() {
             //检查
             const element = targetContainer.querySelector(selector);
@@ -640,7 +639,7 @@ function waitForElement(selector, targetContainer = document, baseDelay = 10, ma
             retryCount++;
             if (retryCount <= maxRetries) {
                 // 等待指数退避时间后，进行下一次attempt
-                setTimeout(attempt, baseDelay * Math.pow(2, retryCount - 1));
+                StrictSetTimeOut(attempt, baseDelay * Math.pow(2, retryCount - 1));
             } else {
                 reject(new Error(`查找元素${selector}失败，重试次数已达上限,请检查网络连接。`));
             }
@@ -651,6 +650,13 @@ function waitForElement(selector, targetContainer = document, baseDelay = 10, ma
 }
 function scrollForData(container){
     return new Promise((resolve, reject)=>{
+        // 创建真实的滚动事件
+        const scrollEvent = new Event('scroll', {
+            bubbles: true,
+            cancelable: true
+        });
+        container.dispatchEvent(scrollEvent);
+        // 同时执行滚动操作
         container.scrollTop = container.scrollHeight;
         let worker=StrictSetInterval(()=>{
             let end=container.querySelector(".studentCard>.end");
@@ -660,9 +666,16 @@ function scrollForData(container){
                     return resolve();
                 },2000);
             }else{
+                // 创建真实的滚动事件
+                const scrollEvent = new Event('scroll', {
+                    bubbles: true,
+                    cancelable: true
+                });
+                container.dispatchEvent(scrollEvent);
+                // 同时执行滚动操作
                 container.scrollTop = container.scrollHeight;
             }
-        },100)
+        },1000)
     })
 }
 /**
@@ -814,9 +827,19 @@ function autoPlayVideo(){
         videoElement.play();
         const videoFlushWorker = new Worker(URL.createObjectURL(videoFlushBlob));
         videoFlushWorker.postMessage({type:'launch'});
+        let recordTime=videoElement.currentTime;
+        let stopCount=0;
         videoFlushWorker.onmessage = function(e) {
             if (e.data.type === 'check') {
                 my_console.log("当前视频时间:"+videoElement.currentTime);
+                if(recordTime==videoElement.currentTime){
+                    stopCount++;
+                    my_console.log(`检测到视频进度未变动：重试第${stopCount}次`);
+                    if(stopCount>10){
+                        location.reload();
+                    }
+                }
+                recordTime=videoElement.currentTime;
                 // 收到Worker的定时信号
                 if(videoElement.currentTime<=videoElement.duration&&videoElement.currentTime>=end){
                     my_console.log("跳过已经观看过的区间:"+watchedInterval[currentInterval]['s']+"-"+watchedInterval[currentInterval]['e']);
@@ -970,9 +993,19 @@ function autoPlayVideoV2(){
         videoElement.play();
         const videoFlushWorker = new Worker(URL.createObjectURL(videoFlushBlob));
         videoFlushWorker.postMessage({type:'launch'});
+        let recordTime=videoElement.currentTime;
+        let stopCount=0;
         videoFlushWorker.onmessage = function(e) {
             if (e.data.type === 'check') {
                 my_console.log("当前视频时间:"+videoElement.currentTime);
+                if(videoElement.currentTime<=recordTime){
+                    stopCount++;
+                    my_console.log(`检测到视频进度未变动：重试第${stopCount}次`);
+                    if(stopCount>10){
+                        location.reload();
+                    }
+                }
+                recordTime=videoElement.currentTime;
                 // 收到Worker的定时信号
                 if(videoElement.currentTime<=videoElement.duration&&videoElement.currentTime>=end){
                     my_console.log("跳过已经观看过的区间:"+watchedInterval[currentInterval]['s']+"-"+watchedInterval[currentInterval]['e']);
