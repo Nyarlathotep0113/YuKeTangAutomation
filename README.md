@@ -7,7 +7,7 @@
 ## 适用范围
 
 雨课堂的网址有(https://fimmuyjs.yuketang.cn/pro/lms/)(https://www.yuketang.cn/v2/web/)
-两类,此脚本是根据**南方医科大学的雨课堂版本**(第一个网址)进行开发的，目前适配v2版本的部分课程结构模式，但有些不适配。
+两类。
 
 ## 功能
 
