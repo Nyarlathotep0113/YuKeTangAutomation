@@ -630,6 +630,7 @@ const simulateHumanClick = (element) => {
 function waitForElement(selector, targetContainer = document, baseDelay = 10, maxRetries = 10) {
     return new Promise((resolve, reject) => {
         let retryCount = 0;
+
         function attempt() {
             //检查
             const element = targetContainer.querySelector(selector);
@@ -639,7 +640,7 @@ function waitForElement(selector, targetContainer = document, baseDelay = 10, ma
             retryCount++;
             if (retryCount <= maxRetries) {
                 // 等待指数退避时间后，进行下一次attempt
-                StrictSetTimeOut(attempt, baseDelay * Math.pow(2, retryCount - 1));
+                setTimeout(attempt, baseDelay * Math.pow(2, retryCount - 1));
             } else {
                 reject(new Error(`查找元素${selector}失败，重试次数已达上限,请检查网络连接。`));
             }
@@ -650,13 +651,6 @@ function waitForElement(selector, targetContainer = document, baseDelay = 10, ma
 }
 function scrollForData(container){
     return new Promise((resolve, reject)=>{
-        // 创建真实的滚动事件
-        const scrollEvent = new Event('scroll', {
-            bubbles: true,
-            cancelable: true
-        });
-        container.dispatchEvent(scrollEvent);
-        // 同时执行滚动操作
         container.scrollTop = container.scrollHeight;
         let worker=StrictSetInterval(()=>{
             let end=container.querySelector(".studentCard>.end");
@@ -666,16 +660,9 @@ function scrollForData(container){
                     return resolve();
                 },2000);
             }else{
-                // 创建真实的滚动事件
-                const scrollEvent = new Event('scroll', {
-                    bubbles: true,
-                    cancelable: true
-                });
-                container.dispatchEvent(scrollEvent);
-                // 同时执行滚动操作
                 container.scrollTop = container.scrollHeight;
             }
-        },1000)
+        },100)
     })
 }
 /**
@@ -777,11 +764,39 @@ function selectLessonItemPageLogic(){
 function selectLessonItemPageLogicV2(){
     my_console.log("当前页面为课程页面,正在寻找第一个未完成的课程...");
     let app = document.getElementById("app");
+    async function getLession(logsList){
+        let sections=logsList.querySelectorAll(`
+        .studentCard > .activity-box > .content-box
+        section[data-v-3364229e][data-v-43c8f7eb]
+        `);
+        let processedSections=[];
+        for (let i=0;i<sections.length;i++){
+            let displaySpan=sections[i].querySelector("div.sub-info>span.gray>span.blue");
+            if(displaySpan!=null){
+                displaySpan.click();
+                let hiddenSection=sections[i].nextElementSibling;
+                await waitForElement(".chapter",hiddenSection).then((element)=>{
+                    console.log("找到了章节");
+                    hiddenSection.querySelectorAll(`.chapter section[data-v-37b23e93][data-v-15dbc820]`).forEach(
+                        (chapter)=>{
+                            processedSections.push(chapter);
+                        }
+                    )
+                })
+            }else{
+                processedSections.push(sections[i]);
+            }
+            console.log("循环一次");
+        }
+        console.log(processedSections)
+        return processedSections;
+    }
     waitForElement("div#pane--1>.logs-list",app).then((element)=>{
         StrictSetTimeOut(()=>{
             let container=document.querySelector(".viewContainer");
-            scrollForData(container).then(()=>{
-                let sections=element.querySelectorAll(".studentCard>.activity-box>.content-box>section");
+            scrollForData(container).then(async ()=>{
+                let sections= await getLession(element);
+                console.log("选择完成");
                 let filteredSections = Array.from(sections).filter(section => {
                     let tagElement=section.querySelector("use");
                     const xlinkHrefValue =tagElement.getAttribute('xlink:href');
@@ -792,7 +807,7 @@ function selectLessonItemPageLogicV2(){
                 if(filteredSections.length==0){
                     my_console.log("全部课程已经学完！");
                 }else{
-                    filteredSections[0].click();
+                   filteredSections[0].click();
                 }
 
             })
@@ -827,19 +842,9 @@ function autoPlayVideo(){
         videoElement.play();
         const videoFlushWorker = new Worker(URL.createObjectURL(videoFlushBlob));
         videoFlushWorker.postMessage({type:'launch'});
-        let recordTime=videoElement.currentTime;
-        let stopCount=0;
         videoFlushWorker.onmessage = function(e) {
             if (e.data.type === 'check') {
                 my_console.log("当前视频时间:"+videoElement.currentTime);
-                if(recordTime==videoElement.currentTime){
-                    stopCount++;
-                    my_console.log(`检测到视频进度未变动：重试第${stopCount}次`);
-                    if(stopCount>10){
-                        location.reload();
-                    }
-                }
-                recordTime=videoElement.currentTime;
                 // 收到Worker的定时信号
                 if(videoElement.currentTime<=videoElement.duration&&videoElement.currentTime>=end){
                     my_console.log("跳过已经观看过的区间:"+watchedInterval[currentInterval]['s']+"-"+watchedInterval[currentInterval]['e']);
@@ -993,19 +998,9 @@ function autoPlayVideoV2(){
         videoElement.play();
         const videoFlushWorker = new Worker(URL.createObjectURL(videoFlushBlob));
         videoFlushWorker.postMessage({type:'launch'});
-        let recordTime=videoElement.currentTime;
-        let stopCount=0;
         videoFlushWorker.onmessage = function(e) {
             if (e.data.type === 'check') {
                 my_console.log("当前视频时间:"+videoElement.currentTime);
-                if(videoElement.currentTime<=recordTime){
-                    stopCount++;
-                    my_console.log(`检测到视频进度未变动：重试第${stopCount}次`);
-                    if(stopCount>10){
-                        location.reload();
-                    }
-                }
-                recordTime=videoElement.currentTime;
                 // 收到Worker的定时信号
                 if(videoElement.currentTime<=videoElement.duration&&videoElement.currentTime>=end){
                     my_console.log("跳过已经观看过的区间:"+watchedInterval[currentInterval]['s']+"-"+watchedInterval[currentInterval]['e']);
